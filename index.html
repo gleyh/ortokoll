@@ -66,10 +66,11 @@ let eintraege = [];
 let karte = null;
 
 function zeige(was) {
-  document.getElementById("liste").style.display = was === "liste" ? "" : "none";
-  document.getElementById("karte").style.display = was === "karte" ? "" : "none";
+  document.getElementById("liste").style.display = was === "liste" ? "block" : "none";
+  document.getElementById("karte").style.display = was === "karte" ? "block" : "none";
   document.getElementById("btnListe").className = was === "liste" ? "aktiv" : "";
   document.getElementById("btnKarte").className = was === "karte" ? "aktiv" : "";
+  try { history.replaceState(null, "", "#" + was); } catch (e) {}
   if (was === "karte" && !karte) karteBauen();
   if (was === "karte" && karte) setTimeout(() => karte.invalidateSize(), 50);
 }
@@ -81,13 +82,11 @@ function datum(zeit) {
 }
 
 function antwortenHtml(e) {
-  let html = "";
   const fragen = ["Frage 1", "Frage 2", "Frage 3"];
-  for (let i = 0; i < fragen.length; i++) {
+  return fragen.map(function(f, i) {
     const a = e.antworten[i] == null ? "keine Angabe" : e.antworten[i];
-    html += "<b>" + fragen[i] + ":</b> " + a + " &middot; ";
-  }
-  return html.slice(0, -11);
+    return "<b>" + f + ":</b> " + a;
+  }).join(" &middot; ");
 }
 
 function fotosHtml(e, klasse) {
@@ -135,7 +134,7 @@ function karteBauen() {
       '<div class="datum">' + datum(e.zeit) + '</div>' +
       '<div>' + standortText(e) + '</div>' +
       '<div class="popup-fotos">' +
-        e.fotos.map(f => '<img src="' + f + '">').join("") +
+        (e.fotos ? e.fotos.map(f => '<img src="' + f + '" alt="Foto">').join("") : "") +
       '</div>' +
       '<div>' + (e.freitext ? e.freitext.slice(0, 120) : "") + '</div>';
     L.marker([e.breite, e.laenge]).addTo(karte)
@@ -151,11 +150,13 @@ fetch("eintraege.json")
     eintraege = Array.isArray(daten) ? daten : [];
     eintraege.sort((a, b) => b.zeit - a.zeit);
     listeBauen();
+    zeige(location.hash === "#karte" ? "karte" : "liste");
   })
   .catch(() => {
     const div = document.getElementById("liste");
     div.className = "leer";
     div.textContent = "Noch keine Einträge – sobald die App sichert, erscheinen sie hier.";
+    zeige(location.hash === "#karte" ? "karte" : "liste");
   });
 </script>
 </body>
