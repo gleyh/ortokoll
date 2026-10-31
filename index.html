@@ -82,7 +82,7 @@ function datum(zeit) {
 }
 
 function antwortenHtml(e) {
-  const fragen = ["Frage 1", "Frage 2", "Frage 3"];
+  const fragen = ["Leuchte", "Helligkeit", "Lichtfarbe"];
   return fragen.map(function(f, i) {
     const a = e.antworten[i] == null ? "keine Angabe" : e.antworten[i];
     return "<b>" + f + ":</b> " + a;
