@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ortokoll</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --hg: #14171c; --karte: #1d222a; --rand: #2b333e;
+    --akzent: #8fc6ff; --text: #e9edf2; --text2: #9aa7b4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--hg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 20px 12px; display: flex; flex-wrap: wrap;
+           align-items: baseline; gap: 12px; }
+  header .titel { font-size: 28px; font-weight: 700; color: var(--akzent); }
+  header .unter { color: var(--text2); font-size: 14px; }
+  nav { margin-left: auto; display: flex; gap: 8px; }
+  nav button { background: var(--karte); color: var(--text2);
+    border: 1px solid var(--rand); border-radius: 10px;
+    padding: 8px 16px; font-size: 14px; cursor: pointer; }
+  nav button.aktiv { color: var(--akzent); border-color: var(--akzent); }
+  main { padding: 8px 20px 24px; }
+  .leer { color: var(--text2); text-align: center; padding: 60px 0; font-size: 15px; }
+  .karte-eintrag { background: var(--karte); border: 1px solid var(--rand);
+    border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .datum { font-weight: 700; font-size: 14px; }
+  .adresse { color: var(--text2); font-size: 13px; margin-top: 2px; }
+  .fotos { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; }
+  .fotos img { width: 96px; height: 96px; object-fit: cover;
+    border-radius: 10px; border: 1px solid var(--rand); }
+  .angaben { margin-top: 10px; font-size: 13px; color: var(--text2); }
+  .angaben b { color: var(--text); font-weight: 600; }
+  .freitext { margin-top: 8px; font-size: 14px; white-space: pre-wrap; }
+  #karte { display: none; }
+  #map { height: calc(100vh - 140px); min-height: 320px;
+    border-radius: 12px; border: 1px solid var(--rand); }
+  .leaflet-tile { filter: brightness(0.9) saturate(0.85); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+    background: var(--karte); color: var(--text); }
+  .popup-fotos img { width: 100px; height: 100px; object-fit: cover;
+    border-radius: 8px; margin: 6px 4px 0 0; }
+  footer { text-align: center; color: var(--text2); font-size: 12px; padding: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="titel">ortokoll</div>
+  <div class="unter">Gemeldete Orte</div>
+  <nav>
+    <button id="btnListe" class="aktiv" onclick="zeige('liste')">Liste</button>
+    <button id="btnKarte" onclick="zeige('karte')">Karte</button>
+  </nav>
+</header>
+<main>
+  <div id="liste" class="leer">Lade Einträge…</div>
+  <div id="karte"><div id="map"></div></div>
+</main>
+<footer>Automatisch erzeugt aus dem ortokoll-Backup · Karte: OpenStreetMap</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let eintraege = [];
+let karte = null;
+
+function zeige(was) {
+  document.getElementById("liste").style.display = was === "liste" ? "" : "none";
+  document.getElementById("karte").style.display = was === "karte" ? "" : "none";
+  document.getElementById("btnListe").className = was === "liste" ? "aktiv" : "";
+  document.getElementById("btnKarte").className = was === "karte" ? "aktiv" : "";
+  if (was === "karte" && !karte) karteBauen();
+  if (was === "karte" && karte) setTimeout(() => karte.invalidateSize(), 50);
+}
+
+function datum(zeit) {
+  return new Date(zeit).toLocaleString("de-DE",
+    { day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit" });
+}
+
+function antwortenHtml(e) {
+  let html = "";
+  const fragen = ["Frage 1", "Frage 2", "Frage 3"];
+  for (let i = 0; i < fragen.length; i++) {
+    const a = e.antworten[i] == null ? "keine Angabe" : e.antworten[i];
+    html += "<b>" + fragen[i] + ":</b> " + a + " &middot; ";
+  }
+  return html.slice(0, -11);
+}
+
+function fotosHtml(e, klasse) {
+  if (!e.fotos || e.fotos.length === 0) return "";
+  return '<div class="' + klasse + '">' +
+    e.fotos.map(f => '<img src="' + f + '" alt="Foto" loading="lazy">').join("") +
+    '</div>';
+}
+
+function standortText(e) {
+  if (e.adresse && e.adresse.trim() !== "") return e.adresse;
+  if (e.breite != null && e.laenge != null)
+    return "Koordinaten: " + e.breite.toFixed(5) + ", " + e.laenge.toFixed(5);
+  return "ohne Standort";
+}
+
+function listeBauen() {
+  const div = document.getElementById("liste");
+  if (eintraege.length === 0) {
+    div.className = "leer";
+    div.textContent = "Noch keine Einträge – sobald die App sichert, erscheinen sie hier.";
+    return;
+  }
+  div.className = "";
+  div.innerHTML = eintraege.map(e =>
+    '<div class="karte-eintrag">' +
+      '<div class="datum">' + datum(e.zeit) + '</div>' +
+      '<div class="adresse">' + standortText(e) + '</div>' +
+      fotosHtml(e, "fotos") +
+      '<div class="angaben">' + antwortenHtml(e) + '</div>' +
+      (e.freitext ? '<div class="freitext">' + e.freitext + '</div>' : "") +
+    '</div>').join("");
+}
+
+function karteBauen() {
+  karte = L.map("map").setView([51.16, 10.45], 6);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap"
+  }).addTo(karte);
+  const punkte = [];
+  eintraege.forEach(e => {
+    if (e.breite == null || e.laenge == null) return;
+    const popup =
+      '<div class="datum">' + datum(e.zeit) + '</div>' +
+      '<div>' + standortText(e) + '</div>' +
+      '<div class="popup-fotos">' +
+        e.fotos.map(f => '<img src="' + f + '">').join("") +
+      '</div>' +
+      '<div>' + (e.freitext ? e.freitext.slice(0, 120) : "") + '</div>';
+    L.marker([e.breite, e.laenge]).addTo(karte)
+      .bindPopup(popup, { maxWidth: 260 });
+    punkte.push([e.breite, e.laenge]);
+  });
+  if (punkte.length > 0) karte.fitBounds(punkte, { padding: [40, 40], maxZoom: 16 });
+}
+
+fetch("eintraege.json")
+  .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+  .then(daten => {
+    eintraege = Array.isArray(daten) ? daten : [];
+    eintraege.sort((a, b) => b.zeit - a.zeit);
+    listeBauen();
+  })
+  .catch(() => {
+    const div = document.getElementById("liste");
+    div.className = "leer";
+    div.textContent = "Noch keine Einträge – sobald die App sichert, erscheinen sie hier.";
+  });
+</script>
+</body>
+</html>
