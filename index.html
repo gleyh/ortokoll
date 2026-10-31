@@ -23,6 +23,21 @@
     padding: 8px 16px; font-size: 14px; cursor: pointer; }
   nav button.aktiv { color: var(--akzent); border-color: var(--akzent); }
   main { padding: 8px 20px 24px; }
+  .filter-box { background: var(--karte); border: 1px solid var(--rand);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+  .filter-zeile { display: flex; align-items: baseline;
+    justify-content: space-between; gap: 8px; }
+  .filter-titel { font-size: 13px; font-weight: 600; color: var(--text2); }
+  .filter-zaehler { font-size: 13px; color: var(--text2); }
+  .filter-leeren { background: none; border: none; color: var(--akzent);
+    font-size: 13px; cursor: pointer; padding: 0; }
+  .filter-frage { font-size: 13px; font-weight: 600; color: var(--text2);
+    margin-top: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip { background: var(--hg); color: var(--text2);
+    border: 1px solid var(--rand); border-radius: 999px;
+    padding: 5px 12px; font-size: 13px; cursor: pointer; }
+  .chip.aktiv { color: var(--akzent); border-color: var(--akzent); }
   .leer { color: var(--text2); text-align: center; padding: 60px 0; font-size: 15px; }
   .karte-eintrag { background: var(--karte); border: 1px solid var(--rand);
     border-radius: 12px; padding: 14px; margin-bottom: 12px; }
@@ -55,6 +70,7 @@
   </nav>
 </header>
 <main>
+  <div id="filter" class="filter-box" style="display:none"></div>
   <div id="liste" class="leer">Lade Einträge…</div>
   <div id="karte"><div id="map"></div></div>
 </main>
@@ -64,9 +80,18 @@
 <script>
 let eintraege = [];
 let karte = null;
+const fragen = ["Leuchte", "Helligkeit", "Lichtfarbe"];
+const antworten = [
+  ["stimmt", "hässlich", "aha"],
+  ["geblendet", "ok", "zappenduster"],
+  ["weiß-blau", "grün", "rose"]
+];
+let filter = [null, null, null];
 
 function zeige(was) {
   document.getElementById("liste").style.display = was === "liste" ? "block" : "none";
+  document.getElementById("filter").style.display =
+    was === "liste" && eintraege.length > 0 ? "block" : "none";
   document.getElementById("karte").style.display = was === "karte" ? "block" : "none";
   document.getElementById("btnListe").className = was === "liste" ? "aktiv" : "";
   document.getElementById("btnKarte").className = was === "karte" ? "aktiv" : "";
@@ -82,7 +107,6 @@ function datum(zeit) {
 }
 
 function antwortenHtml(e) {
-  const fragen = ["Leuchte", "Helligkeit", "Lichtfarbe"];
   return fragen.map(function(f, i) {
     const a = e.antworten[i] == null ? "keine Angabe" : e.antworten[i];
     return "<b>" + f + ":</b> " + a;
@@ -103,15 +127,60 @@ function standortText(e) {
   return "ohne Standort";
 }
 
+function filterBauen() {
+  const div = document.getElementById("filter");
+  let html = '<div class="filter-zeile">' +
+    '<span class="filter-titel">Filter</span>' +
+    '<span class="filter-zaehler" id="filter-zaehler"></span>' +
+    '<button class="filter-leeren" onclick="filterLeeren()">alle löschen</button>' +
+    '</div>';
+  fragen.forEach(function(f, i) {
+    html += '<div class="filter-frage">' + f + '?</div>' + '<div class="chips">';
+    antworten[i].forEach(function(a) {
+      const aktiv = filter[i] === a ? " aktiv" : "";
+      html += '<button class="chip' + aktiv + '" onclick="filterSetzen(' + i + ',\'' + a + '\')">' + a + '</button>';
+    });
+    html += '</div>';
+  });
+  div.innerHTML = html;
+}
+
+function filterSetzen(i, antwort) {
+  filter[i] = filter[i] === antwort ? null : antwort;
+  filterBauen();
+  listeBauen();
+}
+
+function filterLeeren() {
+  filter = [null, null, null];
+  filterBauen();
+  listeBauen();
+}
+
+function passt(e) {
+  for (let i = 0; i < fragen.length; i++) {
+    if (filter[i] != null && e.antworten[i] !== filter[i]) return false;
+  }
+  return true;
+}
+
 function listeBauen() {
   const div = document.getElementById("liste");
+  const sichtbar = eintraege.filter(passt);
+  const zaehler = document.getElementById("filter-zaehler");
+  if (zaehler) zaehler.textContent = sichtbar.length + " von " + eintraege.length + " Einträgen";
   if (eintraege.length === 0) {
     div.className = "leer";
     div.textContent = "Noch keine Einträge – sobald die App sichert, erscheinen sie hier.";
     return;
   }
+  if (sichtbar.length === 0) {
+    div.className = "leer";
+    div.textContent = "Keine Einträge mit diesen Filtern.";
+    return;
+  }
   div.className = "";
-  div.innerHTML = eintraege.map(e =>
+  div.innerHTML = sichtbar.map(e =>
     '<div class="karte-eintrag">' +
       '<div class="datum">' + datum(e.zeit) + '</div>' +
       '<div class="adresse">' + standortText(e) + '</div>' +
@@ -149,6 +218,7 @@ fetch("eintraege.json")
   .then(daten => {
     eintraege = Array.isArray(daten) ? daten : [];
     eintraege.sort((a, b) => b.zeit - a.zeit);
+    filterBauen();
     listeBauen();
     zeige(location.hash === "#karte" ? "karte" : "liste");
   })
