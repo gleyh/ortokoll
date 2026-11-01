@@ -49,9 +49,17 @@
   .angaben { margin-top: 10px; font-size: 13px; color: var(--text2); }
   .angaben b { color: var(--text); font-weight: 600; }
   .freitext { margin-top: 8px; font-size: 14px; white-space: pre-wrap; }
+  #inhalt { display: flex; flex-direction: column; gap: 14px; }
   #karte { display: none; }
-  #map { height: calc(100vh - 140px); min-height: 320px;
+  #map { height: calc(100vh - 200px); min-height: 320px;
     border-radius: 12px; border: 1px solid var(--rand); }
+  @media (min-width: 900px) {
+    nav { display: none; }
+    #inhalt { flex-direction: row; align-items: flex-start; gap: 16px; }
+    #liste { flex: 1 1 0; min-width: 0; }
+    #karte { flex: 1 1 0; min-width: 0; position: sticky; top: 8px; }
+    #map { height: calc(100vh - 200px); min-height: 420px; }
+  }
   .leaflet-tile { filter: brightness(0.9) saturate(0.85); }
   .leaflet-popup-content-wrapper, .leaflet-popup-tip {
     background: var(--karte); color: var(--text); }
@@ -71,8 +79,10 @@
 </header>
 <main>
   <div id="filter" class="filter-box" style="display:none"></div>
-  <div id="liste" class="leer">Lade Einträge…</div>
-  <div id="karte"><div id="map"></div></div>
+  <div id="inhalt">
+    <div id="liste" class="leer">Lade Einträge…</div>
+    <div id="karte"><div id="map"></div></div>
+  </div>
 </main>
 <footer>Automatisch erzeugt aus dem ortokoll-Backup · Karte: OpenStreetMap</footer>
 
@@ -87,17 +97,25 @@ const antworten = [
   ["weiß-blau", "grün", "rose"]
 ];
 let filter = [null, null, null];
+const desktop = window.matchMedia("(min-width: 900px)");
+if (desktop.addEventListener) desktop.addEventListener("change", () => zeige());
+else if (desktop.addListener) desktop.addListener(() => zeige());
+let modus = "liste";
+let karteAlt = false;
 
 function zeige(was) {
-  document.getElementById("liste").style.display = was === "liste" ? "block" : "none";
-  document.getElementById("filter").style.display =
-    was === "liste" && eintraege.length > 0 ? "block" : "none";
-  document.getElementById("karte").style.display = was === "karte" ? "block" : "none";
-  document.getElementById("btnListe").className = was === "liste" ? "aktiv" : "";
-  document.getElementById("btnKarte").className = was === "karte" ? "aktiv" : "";
-  try { history.replaceState(null, "", "#" + was); } catch (e) {}
-  if (was === "karte" && !karte) karteBauen();
-  if (was === "karte" && karte) setTimeout(() => karte.invalidateSize(), 50);
+  if (was === "liste" || was === "karte") modus = was;
+  const beide = desktop.matches;
+  const listeSichtbar = beide || modus === "liste";
+  const karteSichtbar = beide || modus === "karte";
+  document.getElementById("liste").style.display = listeSichtbar ? "block" : "none";
+  document.getElementById("karte").style.display = karteSichtbar ? "block" : "none";
+  document.getElementById("filter").style.display = eintraege.length > 0 ? "block" : "none";
+  document.getElementById("btnListe").className = modus === "liste" ? "aktiv" : "";
+  document.getElementById("btnKarte").className = modus === "karte" ? "aktiv" : "";
+  if (!beide) { try { history.replaceState(null, "", "#" + modus); } catch (e) {} }
+  if (karteSichtbar && (!karte || karteAlt)) { karteBauen(); karteAlt = false; }
+  else if (karteSichtbar && karte) setTimeout(() => karte.invalidateSize(), 50);
 }
 
 function datum(zeit) {
@@ -149,12 +167,20 @@ function filterSetzen(i, antwort) {
   filter[i] = filter[i] === antwort ? null : antwort;
   filterBauen();
   listeBauen();
+  karteAktualisieren();
 }
 
 function filterLeeren() {
   filter = [null, null, null];
   filterBauen();
   listeBauen();
+  karteAktualisieren();
+}
+
+function karteAktualisieren() {
+  if (!karte) return;  // Karte gibt es noch nicht – sie wird beim Anzeigen frisch gebaut
+  if (document.getElementById("karte").style.display === "none") { karteAlt = true; return; }
+  karteBauen();
 }
 
 function passt(e) {
@@ -191,13 +217,14 @@ function listeBauen() {
 }
 
 function karteBauen() {
+  if (karte) { karte.remove(); karte = null; }
   karte = L.map("map").setView([51.16, 10.45], 6);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   }).addTo(karte);
   const punkte = [];
-  eintraege.forEach(e => {
+  eintraege.filter(passt).forEach(e => {
     if (e.breite == null || e.laenge == null) return;
     const popup =
       '<div class="datum">' + datum(e.zeit) + '</div>' +
