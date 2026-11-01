@@ -23,21 +23,29 @@
     padding: 8px 16px; font-size: 14px; cursor: pointer; }
   nav button.aktiv { color: var(--akzent); border-color: var(--akzent); }
   main { padding: 8px 20px 24px; }
-  .filter-box { background: var(--karte); border: 1px solid var(--rand);
-    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
-  .filter-zeile { display: flex; align-items: baseline;
-    justify-content: space-between; gap: 8px; }
-  .filter-titel { font-size: 13px; font-weight: 600; color: var(--text2); }
-  .filter-zaehler { font-size: 13px; color: var(--text2); }
-  .filter-leeren { background: none; border: none; color: var(--akzent);
-    font-size: 13px; cursor: pointer; padding: 0; }
-  .filter-frage { font-size: 13px; font-weight: 600; color: var(--text2);
-    margin-top: 10px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .chip { background: var(--hg); color: var(--text2);
+  #filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin-bottom: 14px; position: sticky; top: 0; z-index: 1050;
+    background: var(--hg); padding: 8px 0; }
+  .fmenue { position: relative; }
+  .fchip { background: var(--karte); color: var(--text);
     border: 1px solid var(--rand); border-radius: 999px;
-    padding: 5px 12px; font-size: 13px; cursor: pointer; }
-  .chip.aktiv { color: var(--akzent); border-color: var(--akzent); }
+    padding: 7px 14px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .fchip:hover { border-color: var(--akzent); }
+  .fchip.aktiv { background: #16324b; color: var(--akzent); border-color: var(--akzent); }
+  .fchip .pfeil { color: var(--text2); font-size: 11px; margin-left: 5px; }
+  .fpanel { display: none; position: absolute; top: calc(100% + 6px); left: 0;
+    background: var(--karte); border: 1px solid var(--rand); border-radius: 12px;
+    padding: 8px; min-width: 160px; z-index: 1100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+  .fpanel.offen { display: flex; flex-direction: column; gap: 2px; }
+  .foption { background: none; border: none; color: var(--text); text-align: left;
+    border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .foption:hover { background: #232a33; }
+  .foption.aktiv { color: var(--akzent); font-weight: 600; }
+  .fzaehler { color: var(--text2); font-size: 13px; margin-left: auto; }
+  .fleeren { background: none; border: 1px solid var(--rand); color: var(--text2);
+    border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  .fleeren:hover { color: var(--akzent); border-color: var(--akzent); }
   .leer { color: var(--text2); text-align: center; padding: 60px 0; font-size: 15px; }
   .karte-eintrag { background: var(--karte); border: 1px solid var(--rand);
     border-radius: 12px; padding: 14px; margin-bottom: 12px; }
@@ -78,7 +86,7 @@
   </nav>
 </header>
 <main>
-  <div id="filter" class="filter-box" style="display:none"></div>
+  <div id="filter" class="filterleiste" style="display:none"></div>
   <div id="inhalt">
     <div id="liste" class="leer">Lade Einträge…</div>
     <div id="karte"><div id="map"></div></div>
@@ -110,7 +118,7 @@ function zeige(was) {
   const karteSichtbar = beide || modus === "karte";
   document.getElementById("liste").style.display = listeSichtbar ? "block" : "none";
   document.getElementById("karte").style.display = karteSichtbar ? "block" : "none";
-  document.getElementById("filter").style.display = eintraege.length > 0 ? "block" : "none";
+  document.getElementById("filter").style.display = eintraege.length > 0 ? "flex" : "none";
   document.getElementById("btnListe").className = modus === "liste" ? "aktiv" : "";
   document.getElementById("btnKarte").className = modus === "karte" ? "aktiv" : "";
   if (!beide) { try { history.replaceState(null, "", "#" + modus); } catch (e) {} }
@@ -147,24 +155,47 @@ function standortText(e) {
 
 function filterBauen() {
   const div = document.getElementById("filter");
-  let html = '<div class="filter-zeile">' +
-    '<span class="filter-titel">Filter</span>' +
-    '<span class="filter-zaehler" id="filter-zaehler"></span>' +
-    '<button class="filter-leeren" onclick="filterLeeren()">alle löschen</button>' +
-    '</div>';
+  let html = "";
   fragen.forEach(function(f, i) {
-    html += '<div class="filter-frage">' + f + '?</div>' + '<div class="chips">';
-    antworten[i].forEach(function(a) {
-      const aktiv = filter[i] === a ? " aktiv" : "";
-      html += '<button class="chip' + aktiv + '" onclick="filterSetzen(' + i + ',\'' + a + '\')">' + a + '</button>';
-    });
-    html += '</div>';
+    const wert = filter[i];
+    const label = wert == null ? f : f + ": " + wert;
+    html += '<div class="fmenue">' +
+      '<button class="fchip' + (wert != null ? " aktiv" : "") + '" onclick="filterMenue(' + i + ')">' +
+        label + '<span class="pfeil">&#9662;</span></button>' +
+      '<div id="fpanel' + i + '" class="fpanel">' +
+        '<button class="foption' + (wert == null ? " aktiv" : "") + '" ' +
+          'onclick="filterWaehlen(' + i + ',null)">beliebig</button>' +
+        antworten[i].map(function(a) {
+          return '<button class="foption' + (wert === a ? " aktiv" : "") + '" ' +
+            'onclick="filterWaehlen(' + i + ',\'' + a + '\')">' + a + '</button>';
+        }).join("") +
+      '</div></div>';
   });
+  if (filter.some(w => w != null))
+    html += '<button class="fleeren" onclick="filterLeeren()">&#10005;&nbsp;alle löschen</button>';
+  if (eintraege.length > 0)
+    html += '<span class="fzaehler">' + eintraege.filter(passt).length +
+      " von " + eintraege.length + " Einträgen</span>";
   div.innerHTML = html;
 }
 
-function filterSetzen(i, antwort) {
-  filter[i] = filter[i] === antwort ? null : antwort;
+function filterMenue(i) {
+  const panel = document.getElementById("fpanel" + i);
+  const warOffen = panel.className.indexOf("offen") >= 0;
+  allePanelsZu();
+  if (!warOffen) panel.className = "fpanel offen";
+}
+
+function allePanelsZu() {
+  fragen.forEach(function(f, i) {
+    const p = document.getElementById("fpanel" + i);
+    if (p) p.className = "fpanel";
+  });
+}
+
+function filterWaehlen(i, antwort) {
+  filter[i] = antwort;
+  allePanelsZu();
   filterBauen();
   listeBauen();
   karteAktualisieren();
@@ -183,6 +214,10 @@ function karteAktualisieren() {
   karteBauen();
 }
 
+document.addEventListener("click", function(e) {
+  if (e.target && e.target.closest && !e.target.closest(".fmenue")) allePanelsZu();
+});
+
 function passt(e) {
   for (let i = 0; i < fragen.length; i++) {
     if (filter[i] != null && e.antworten[i] !== filter[i]) return false;
@@ -193,8 +228,6 @@ function passt(e) {
 function listeBauen() {
   const div = document.getElementById("liste");
   const sichtbar = eintraege.filter(passt);
-  const zaehler = document.getElementById("filter-zaehler");
-  if (zaehler) zaehler.textContent = sichtbar.length + " von " + eintraege.length + " Einträgen";
   if (eintraege.length === 0) {
     div.className = "leer";
     div.textContent = "Noch keine Einträge – sobald die App sichert, erscheinen sie hier.";
